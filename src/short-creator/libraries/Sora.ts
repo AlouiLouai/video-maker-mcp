@@ -58,7 +58,9 @@ export class SoraAPI {
     width: number,
     height: number,
   ): Promise<string> {
-    const requestUrl = `${this.apiEndpoint}/openai/v1/video/generations/jobs?api-version=preview`; // Using the endpoint structure from user
+    // this.apiEndpoint is expected to be the full URL for initiating the job,
+    // e.g., "https://<resource>.openai.azure.com/openai/v1/video/generations/jobs?api-version=preview"
+    const requestUrl = this.apiEndpoint;
     const payload = {
       model: "sora", // Assuming "sora" is the model identifier
       prompt,
@@ -127,9 +129,23 @@ export class SoraAPI {
 
   private async pollForJobCompletion(jobId: string): Promise<SoraJobStatusResponse> {
     const startTime = Date.now();
-    // Construct the likely status URL based on the job ID. This is an assumption.
-    // The actual URL might be part of the response from the job initiation call (e.g., in a 'Location' or 'Operation-Location' header)
-    const statusUrl = `${this.apiEndpoint}/openai/v1/video/generations/jobs/${jobId}?api-version=preview`;
+
+    // Construct the status URL by inserting the jobId into the apiEndpoint path.
+    // this.apiEndpoint is like: "https://<resource>.openai.azure.com/openai/v1/video/generations/jobs?api-version=preview"
+    // We want: "https://<resource>.openai.azure.com/openai/v1/video/generations/jobs/{jobId}?api-version=preview"
+
+    let statusUrl = "";
+    try {
+      const endpointUrl = new URL(this.apiEndpoint);
+      // Assuming the path is something like /openai/v1/video/generations/jobs
+      // We append the jobId to this path.
+      const basePath = endpointUrl.pathname; // e.g., /openai/v1/video/generations/jobs
+      endpointUrl.pathname = `${basePath}/${jobId}`; // e.g., /openai/v1/video/generations/jobs/test-job-id-123
+      statusUrl = endpointUrl.toString();
+    } catch (e) {
+      logger.error({ error: e, apiEndpoint: this.apiEndpoint }, "Failed to parse apiEndpoint to construct status URL");
+      throw new Error("Invalid API Endpoint format for constructing status URL.");
+    }
 
     logger.debug({ statusUrl, jobId }, "Polling Sora job status.");
 
