@@ -180,13 +180,17 @@ export class SoraAPI {
         const statusData = (await response.json()) as SoraJobStatusResponse;
         logger.debug({ jobId, status: statusData.status }, "Sora job status update.");
 
-        if (statusData.status === "Succeeded") {
-          logger.info({ jobId }, "Sora job succeeded.");
+        if (statusData.status === "Succeeded") { // Assuming "Succeeded" is consistently cased
+          logger.info({ jobId, result: statusData.result }, "Sora job succeeded."); // Added result to log
+          if (!statusData.result?.videos || statusData.result.videos.length === 0 || !statusData.result.videos[0].url) {
+            logger.error({ jobId, result: statusData.result }, "Sora job succeeded but video data is missing.");
+            throw new Error("Sora job succeeded but video data is missing in the response.");
+          }
           return statusData;
-        } else if (statusData.status === "Failed" || statusData.status === "Canceled") {
-          logger.error({ jobId, status: statusData.status, error: statusData.error }, "Sora job failed or was canceled.");
+        } else if (statusData.status.toLowerCase() === "failed" || statusData.status.toLowerCase() === "canceled") {
+          logger.error({ jobId, status: statusData.status, error: statusData.error, response: statusData }, "Sora job failed or was canceled.");
           throw new Error(
-            `Sora job ${jobId} ${statusData.status}: ${statusData.error?.message || "Unknown error"}`,
+            `Sora job ${jobId} ${statusData.status}: ${statusData.error?.message || "Unknown error details not provided by API."}`,
           );
         }
         // If "Running" or "NotStarted", continue polling after interval
