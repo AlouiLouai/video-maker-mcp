@@ -6,7 +6,8 @@ import { Kokoro } from "./short-creator/libraries/Kokoro";
 import { Remotion } from "./short-creator/libraries/Remotion";
 import { Whisper } from "./short-creator/libraries/Whisper";
 import { FFMpeg } from "./short-creator/libraries/FFmpeg";
-import { PexelsAPI } from "./short-creator/libraries/Pexels";
+// import { PexelsAPI } from "./short-creator/libraries/Pexels"; // Removed
+import { SoraAPI } from "./short-creator/libraries/Sora"; // Added
 import { Config } from "./config";
 import { ShortCreator } from "./short-creator/ShortCreator";
 import { logger } from "./logger";
@@ -39,7 +40,8 @@ async function main() {
   const whisper = await Whisper.init(config);
   logger.debug("initializing ffmpeg");
   const ffmpeg = await FFMpeg.init();
-  const pexelsApi = new PexelsAPI(config.pexelsApiKey);
+  logger.debug("initializing SoraAPI");
+  const soraApi = new SoraAPI(config.soraApiKey, config.soraApiEndpoint);
 
   logger.debug("initializing the short creator");
   const shortCreator = new ShortCreator(
@@ -48,7 +50,7 @@ async function main() {
     kokoro,
     whisper,
     ffmpeg,
-    pexelsApi,
+    soraApi, // Changed from pexelsApi to soraApi
     musicManager,
   );
 
@@ -63,7 +65,12 @@ async function main() {
       try {
         const audioBuffer = (await kokoro.generate("hi", "af_heart")).audio;
         await ffmpeg.createMp3DataUri(audioBuffer);
-        await pexelsApi.findVideo(["dog"], 2.4);
+        // Updated to use soraApi.generateVideo - this will make a live API call
+        // Consider if this test is appropriate for every startup in a non-Docker env
+        // as it may consume API quota and take time.
+        logger.info("Testing Sora API connection by generating a short test video...");
+        await soraApi.generateVideo("a small dog running", 2.4, "portrait" as any); // Using 'portrait' as any to satisfy OrientationEnum if not directly imported
+        logger.info("Sora API test video generation initiated (actual video download/use not part of this test).");
         const testVideoPath = path.join(config.tempDirPath, "test.mp4");
         await remotion.testRender(testVideoPath);
         fs.rmSync(testVideoPath, { force: true });
