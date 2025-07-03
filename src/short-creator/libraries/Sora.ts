@@ -178,12 +178,12 @@ export class SoraAPI {
         }
 
         const statusData = (await response.json()) as SoraJobStatusResponse;
-        logger.debug({ jobId, status: statusData.status }, "Sora job status update.");
+        logger.debug({ jobId, status: statusData.status, response: statusData }, "Sora job status update."); // Log full response for debug
 
-        if (statusData.status === "Succeeded") { // Assuming "Succeeded" is consistently cased
-          logger.info({ jobId, result: statusData.result }, "Sora job succeeded."); // Added result to log
+        if (statusData.status.toLowerCase() === "succeeded") {
+          logger.info({ jobId, result: statusData.result, response: statusData }, "Sora job succeeded.");
           if (!statusData.result?.videos || statusData.result.videos.length === 0 || !statusData.result.videos[0].url) {
-            logger.error({ jobId, result: statusData.result }, "Sora job succeeded but video data is missing.");
+            logger.error({ jobId, result: statusData.result, response: statusData }, "Sora job succeeded but video data is missing.");
             throw new Error("Sora job succeeded but video data is missing in the response.");
           }
           return statusData;
