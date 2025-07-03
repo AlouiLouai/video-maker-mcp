@@ -12,19 +12,42 @@ interface SoraJobInitiationResponse {
 }
 
 // Define a type for the Sora job status response
+interface SoraGeneration {
+  object: string; // e.g., "video.generation"
+  id: string; // Generation ID, e.g., "gen_..."
+  job_id: string;
+  created_at: number;
+  width?: number;
+  height?: number;
+  n_seconds?: number;
+  prompt?: string;
+  url?: string; // This is the field we hope to find for the video URL
+  // Allow any other fields as the API might evolve
+  [key: string]: any;
+}
+
 interface SoraJobStatusResponse {
-  status: "NotStarted" | "Running" | "Succeeded" | "Failed" | "Canceled"; // Typical Azure job statuses
-  result?: { // Assuming results are nested if the job succeeded
-    videos?: Array<{
-      url: string; // URL to the generated video
-      // ... any other relevant video metadata (e.g., duration, size)
-    }>;
-  };
-  error?: {
+  object: string; // e.g., "video.generation.job"
+  id: string; // Job ID, e.g., "task_..."
+  status: string; // Status like "succeeded", "failed", "running", "preprocessing", "queued"
+  created_at: number;
+  finished_at?: number;
+  expires_at?: number;
+  generations?: SoraGeneration[];
+  prompt?: string; // Top-level prompt for the job
+  model?: string;
+  n_variants?: number;
+  n_seconds?: number; // Top-level requested n_seconds
+  height?: number; // Top-level requested height
+  width?: number; // Top-level requested width
+  failure_reason?: string | null;
+  error?: { // Error object if status is "failed"
     message: string;
+    code?: string;
     // ... any other error details
   };
-  // ... any other relevant fields from the status response
+  // Allow any other fields
+  [key: string]: any;
 }
 
 export class SoraAPI {
@@ -180,23 +203,40 @@ export class SoraAPI {
         const statusData = (await response.json()) as SoraJobStatusResponse;
         logger.debug({ jobId, status: statusData.status, response: statusData }, "Sora job status update."); // Log full response for debug
 
-        if (statusData.status.toLowerCase() === "succeeded") {
-          logger.info({ jobId, result: statusData.result, response: statusData }, "Sora job succeeded.");
-          if (!statusData.result?.videos || statusData.result.videos.length === 0 || !statusData.result.videos[0].url) {
-            logger.error({ jobId, result: statusData.result, response: statusData }, "Sora job succeeded but video data is missing.");
-            throw new Error("Sora job succeeded but video data is missing in the response.");
+        const currentStatus = statusData.status.toLowerCase();
+
+        if (currentStatus === "succeeded") {
+          logger.info({ jobId, response: statusData }, "Sora job succeeded according to API.");
+          const firstGeneration = statusData.generations?.[0];
+          if (firstGeneration?.url) {
+            // Successfully found URL
+            return statusData;
+          } else {
+            // Succeeded, but no URL found where expected
+            logger.error({ jobId, response: statusData }, "Sora job status is 'succeeded' but no video URL found in generations[0].url.");
+            // This is a terminal error for this attempt, should not be caught by the polling retry catch block.
+            throw new Error("Sora job succeeded but video data is missing or in an unexpected format.");
           }
-          return statusData;
-        } else if (statusData.status.toLowerCase() === "failed" || statusData.status.toLowerCase() === "canceled") {
-          logger.error({ jobId, status: statusData.status, error: statusData.error, response: statusData }, "Sora job failed or was canceled.");
+        } else if (currentStatus === "failed" || currentStatus === "canceled") {
+          logger.error({ jobId, status: statusData.status, error: statusData.error, response: statusData }, "Sora job failed or was canceled by API.");
+          // This is a terminal error, should not be caught by the polling retry catch block.
           throw new Error(
             `Sora job ${jobId} ${statusData.status}: ${statusData.error?.message || "Unknown error details not provided by API."}`,
           );
         }
-        // If "Running" or "NotStarted", continue polling after interval
-      } catch (error) {
-        // Handle network errors or other unexpected issues during polling
-        logger.warn({ error, jobId }, "Error during polling, retrying...");
+        // If status is "running", "preprocessing", "queued", etc., continue polling.
+        // No action needed here, the loop will continue.
+
+      } catch (error: any) {
+        // This catch block is intended for network errors or unexpected issues with fetch/JSON parsing,
+        // NOT for terminal job states like "failed" or "succeeded but no URL".
+        // If the error thrown above (e.g. "video data missing") is caught here, it's a problem.
+        // We need to ensure terminal errors propagate out.
+        if (error.message.startsWith("Sora job succeeded but video data is missing") ||
+            error.message.startsWith(`Sora job ${jobId} ${statusData.status.toLowerCase()}`)) { // A bit fragile to check message
+             throw error; // Re-throw terminal errors
+        }
+        logger.warn({ error: error.message, jobId, stack: error.stack }, "Network or unexpected error during polling, retrying...");
       }
       await new Promise((resolve) => setTimeout(resolve, this.pollIntervalMs));
     }
@@ -217,17 +257,13 @@ export class SoraAPI {
       height,
     );
 
-    const completedJob = await this.pollForJobCompletion(jobId);
+    const completedJob = await this.pollForJobCompletion(jobId); // This will now throw if URL is not found on success
 
-    if (
-      completedJob.status === "Succeeded" &&
-      completedJob.result?.videos &&
-      completedJob.result.videos.length > 0 &&
-      completedJob.result.videos[0].url
-    ) {
-      const videoUrl = completedJob.result.videos[0].url;
-      logger.info({ jobId, videoUrl }, "Sora video generated successfully.");
-      // Sora API doesn't give a persistent ID for the video itself, use the job ID or a new cuid
+    // completedJob here is guaranteed to be a "succeeded" status with a generations[0].url if no error was thrown
+    const videoUrl = completedJob.generations![0].url!; // Safe due to checks in pollForJobCompletion
+
+    logger.info({ jobId, videoUrl }, "Sora video generated successfully and URL retrieved.");
+    // Sora API doesn't give a persistent ID for the video itself, use the job ID or a new cuid
       // For now, let's use a new cuid as the video ID for consistency with how Pexels was handled (though Pexels IDs were from the service)
       // The 'id' here is more like a temporary identifier for the downloaded clip in our system if needed.
       // The URL is the most important part.
