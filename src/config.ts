@@ -37,7 +37,9 @@ export class Config {
   public tempDirPath: string;
   public packageDirPath: string;
   public musicDirPath: string;
-  public pexelsApiKey: string;
+  // public pexelsApiKey: string; // Removed as Pexels is replaced by Sora
+  public soraApiKey: string;
+  public soraApiEndpoint: string;
   public logLevel: pino.Level;
   public whisperVerbose: boolean;
   public port: number;
@@ -74,7 +76,9 @@ export class Config {
     this.staticDirPath = path.join(this.packageDirPath, "static");
     this.musicDirPath = path.join(this.staticDirPath, "music");
 
-    this.pexelsApiKey = process.env.PEXELS_API_KEY as string;
+    // this.pexelsApiKey = process.env.PEXELS_API_KEY as string; // Removed
+    this.soraApiKey = process.env.SORA_API_KEY as string;
+    this.soraApiEndpoint = process.env.SORA_API_ENDPOINT as string;
     this.logLevel = (process.env.LOG_LEVEL || defaultLogLevel) as pino.Level;
     this.whisperVerbose = process.env.WHISPER_VERBOSE === "true";
     this.port = process.env.PORT ? parseInt(process.env.PORT) : defaultPort;
@@ -101,9 +105,19 @@ export class Config {
   }
 
   public ensureConfig() {
-    if (!this.pexelsApiKey) {
+    // if (!this.pexelsApiKey) { // Pexels key is no longer the primary requirement
+    //   throw new Error(
+    //     "PEXELS_API_KEY environment variable is missing. Get your free API key: https://www.pexels.com/api/key/ - see how to run the project: https://github.com/gyoridavid/short-video-maker",
+    //   );
+    // }
+    if (!this.soraApiKey) {
       throw new Error(
-        "PEXELS_API_KEY environment variable is missing. Get your free API key: https://www.pexels.com/api/key/ - see how to run the project: https://github.com/gyoridavid/short-video-maker",
+        "SORA_API_KEY environment variable is missing. Please provide your Azure Sora API Key.",
+      );
+    }
+    if (!this.soraApiEndpoint) {
+      throw new Error(
+        "SORA_API_ENDPOINT environment variable is missing. Please provide your Azure Sora API Endpoint.",
       );
     }
   }

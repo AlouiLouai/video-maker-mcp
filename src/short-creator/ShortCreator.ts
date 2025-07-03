@@ -10,7 +10,8 @@ import { Kokoro } from "./libraries/Kokoro";
 import { Remotion } from "./libraries/Remotion";
 import { Whisper } from "./libraries/Whisper";
 import { FFMpeg } from "./libraries/FFmpeg";
-import { PexelsAPI } from "./libraries/Pexels";
+// import { PexelsAPI } from "./libraries/Pexels"; // PexelsAPI is removed
+import { SoraAPI } from "./libraries/Sora"; // Import SoraAPI
 import { Config } from "../config";
 import { logger } from "../logger";
 import { MusicManager } from "./music";
@@ -36,7 +37,7 @@ export class ShortCreator {
     private kokoro: Kokoro,
     private whisper: Whisper,
     private ffmpeg: FFMpeg,
-    private pexelsApi: PexelsAPI,
+    private soraApi: SoraAPI, // Changed from pexelsApi to soraApi
     private musicManager: MusicManager,
   ) {}
 
@@ -100,7 +101,7 @@ export class ShortCreator {
     );
     const scenes: Scene[] = [];
     let totalDuration = 0;
-    const excludeVideoIds = [];
+    // const excludeVideoIds = []; // Not needed for Sora as videos are uniquely generated
     const tempFiles = [];
 
     const orientation: OrientationEnum =
@@ -137,14 +138,21 @@ export class ShortCreator {
       const captions = await this.whisper.CreateCaption(tempWavPath);
 
       await this.ffmpeg.saveToMp3(audioStream, tempMp3Path);
-      const video = await this.pexelsApi.findVideo(
-        scene.searchTerms,
+
+      // Generate prompt for Sora from search terms
+      const soraPrompt = scene.searchTerms.join(" ");
+      logger.debug({ soraPrompt, audioLength, orientation }, "Generating video with Sora.");
+
+      const video = await this.soraApi.generateVideo(
+        soraPrompt,
         audioLength,
-        excludeVideoIds,
         orientation,
       );
 
-      logger.debug(`Downloading video from ${video.url} to ${tempVideoPath}`);
+      // video object from SoraAPI already contains { id, url, width, height }
+      // The 'id' from Sora is sora-${jobId}.
+
+      logger.debug({ videoUrl: video.url, videoId: video.id }, `Generated video with Sora, downloading from ${video.url} to ${tempVideoPath}`);
 
       await new Promise<void>((resolve, reject) => {
         const fileStream = fs.createWriteStream(tempVideoPath);
@@ -172,7 +180,7 @@ export class ShortCreator {
           });
       });
 
-      excludeVideoIds.push(video.id);
+      // excludeVideoIds.push(video.id); // Not needed for Sora
 
       scenes.push({
         captions,
