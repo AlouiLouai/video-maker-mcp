@@ -273,11 +273,10 @@ export class SoraAPI {
         width, // Assuming the generated video matches requested dimensions
         height,
       };
-    } else {
-      logger.error({ jobId, status: completedJob.status, result: completedJob.result }, "Sora job did not succeed or video URL is missing.");
-      throw new Error(
-        `Sora job ${jobId} completed but no video URL was found. Status: ${completedJob.status}`,
-      );
+    // The 'else' block here is no longer needed because pollForJobCompletion
+    // will throw an error if the job does not succeed with a URL.
+    // If pollForJobCompletion returns, 'completedJob' is guaranteed to be successful
+    // and contain the necessary URL.
     }
   }
 }
