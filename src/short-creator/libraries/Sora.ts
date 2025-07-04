@@ -41,7 +41,8 @@ interface SoraJobStatusResponse {
   height?: number; // Top-level requested height
   width?: number; // Top-level requested width
   failure_reason?: string | null;
-  error?: { // Error object if status is "failed"
+  error?: {
+    // Error object if status is "failed"
     message: string;
     code?: string;
     // ... any other error details
@@ -72,7 +73,10 @@ export class SoraAPI {
     this.apiEndpoint = apiEndpoint;
     this.pollIntervalMs = pollIntervalMs;
     this.pollTimeoutMs = pollTimeoutMs;
-    logger.info({ apiEndpoint, pollIntervalMs, pollTimeoutMs }, "SoraAPI client initialized.");
+    logger.info(
+      { apiEndpoint, pollIntervalMs, pollTimeoutMs },
+      "SoraAPI client initialized.",
+    );
   }
 
   private async initiateVideoGeneration(
@@ -93,7 +97,10 @@ export class SoraAPI {
       n_variants: "1",
     };
 
-    logger.debug({ url: requestUrl, payload }, "Initiating Sora video generation job.");
+    logger.debug(
+      { url: requestUrl, payload },
+      "Initiating Sora video generation job.",
+    );
 
     const response = await fetch(requestUrl, {
       method: "POST",
@@ -106,7 +113,10 @@ export class SoraAPI {
 
     if (!response.ok) {
       const errorBody = await response.text();
-      logger.error({ status: response.status, errorBody, url: requestUrl }, "Sora API error initiating job.");
+      logger.error(
+        { status: response.status, errorBody, url: requestUrl },
+        "Sora API error initiating job.",
+      );
       throw new Error(
         `Sora API error initiating job: ${response.status} ${response.statusText} - ${errorBody}`,
       );
@@ -128,29 +138,47 @@ export class SoraAPI {
     // Let's check for `Operation-Location` header first as it's common in Azure REST APIs for async operations.
     const operationLocationUrl = response.headers.get("operation-location");
     if (operationLocationUrl) {
-        logger.info({ operationLocationUrl }, "Received operation-location header for polling.");
-        // This URL is likely the direct URL to poll for the job status.
-        // We'll need to extract the job ID from it if we want to construct it ourselves, or just use this URL.
-        // For simplicity, we might just store and use this full URL for polling.
-        // However, our current structure expects a jobID to be returned.
-        // Let's assume the job ID is the last part of the path in operationLocationUrl.
-        const parts = operationLocationUrl.split('/');
-        const jobId = parts.pop() || parts.pop(); // Handle trailing slash
-        if (!jobId) {
-            throw new Error("Could not extract job ID from operation-location header.");
-        }
-        logger.info({ jobId }, "Extracted job ID from operation-location header.");
-        return jobId; // Or return the full operationLocationUrl if the polling function is adapted
+      logger.info(
+        { operationLocationUrl },
+        "Received operation-location header for polling.",
+      );
+      // This URL is likely the direct URL to poll for the job status.
+      // We'll need to extract the job ID from it if we want to construct it ourselves, or just use this URL.
+      // For simplicity, we might just store and use this full URL for polling.
+      // However, our current structure expects a jobID to be returned.
+      // Let's assume the job ID is the last part of the path in operationLocationUrl.
+      const parts = operationLocationUrl.split("/");
+      const jobId = parts.pop() || parts.pop(); // Handle trailing slash
+      if (!jobId) {
+        throw new Error(
+          "Could not extract job ID from operation-location header.",
+        );
+      }
+      logger.info(
+        { jobId },
+        "Extracted job ID from operation-location header.",
+      );
+      return jobId; // Or return the full operationLocationUrl if the polling function is adapted
     } else if (responseData && responseData.id) {
-        logger.info({ jobId: responseData.id }, "Received job ID in response body.");
-        return responseData.id;
+      logger.info(
+        { jobId: responseData.id },
+        "Received job ID in response body.",
+      );
+      return responseData.id;
     } else {
-        logger.error({ responseHeaders: response.headers, responseBody: responseData }, "Sora API did not return a job ID or operation-location header.");
-        throw new Error("Sora API did not return a job ID or operation-location header.");
+      logger.error(
+        { responseHeaders: response.headers, responseBody: responseData },
+        "Sora API did not return a job ID or operation-location header.",
+      );
+      throw new Error(
+        "Sora API did not return a job ID or operation-location header.",
+      );
     }
   }
 
-  private async pollForJobCompletion(jobId: string): Promise<SoraJobStatusResponse> {
+  private async pollForJobCompletion(
+    jobId: string,
+  ): Promise<SoraJobStatusResponse> {
     const startTime = Date.now();
 
     // Construct the status URL by inserting the jobId into the apiEndpoint path.
@@ -166,8 +194,13 @@ export class SoraAPI {
       endpointUrl.pathname = `${basePath}/${jobId}`; // e.g., /openai/v1/video/generations/jobs/test-job-id-123
       statusUrl = endpointUrl.toString();
     } catch (e) {
-      logger.error({ error: e, apiEndpoint: this.apiEndpoint }, "Failed to parse apiEndpoint to construct status URL");
-      throw new Error("Invalid API Endpoint format for constructing status URL.");
+      logger.error(
+        { error: e, apiEndpoint: this.apiEndpoint },
+        "Failed to parse apiEndpoint to construct status URL",
+      );
+      throw new Error(
+        "Invalid API Endpoint format for constructing status URL.",
+      );
     }
 
     logger.debug({ statusUrl, jobId }, "Polling Sora job status.");
@@ -175,7 +208,10 @@ export class SoraAPI {
     // eslint-disable-next-line no-constant-condition
     while (true) {
       if (Date.now() - startTime > this.pollTimeoutMs) {
-        logger.error({ jobId, pollTimeoutMs: this.pollTimeoutMs }, "Sora job polling timed out.");
+        logger.error(
+          { jobId, pollTimeoutMs: this.pollTimeoutMs },
+          "Sora job polling timed out.",
+        );
         throw new Error(`Sora job polling timed out for job ID: ${jobId}`);
       }
 
@@ -191,34 +227,63 @@ export class SoraAPI {
           const errorBody = await response.text();
           // Specific handling for 404 if job ID is not found or job expired
           if (response.status === 404) {
-             logger.error({ status: response.status, errorBody, jobId }, "Sora job not found (404). It might have expired or the ID is incorrect.");
-             throw new Error(`Sora job not found (404) for job ID: ${jobId}. ${errorBody}`);
+            logger.error(
+              { status: response.status, errorBody, jobId },
+              "Sora job not found (404). It might have expired or the ID is incorrect.",
+            );
+            throw new Error(
+              `Sora job not found (404) for job ID: ${jobId}. ${errorBody}`,
+            );
           }
-          logger.warn({ status: response.status, errorBody, jobId }, "Sora API error polling job status. Retrying...");
+          logger.warn(
+            { status: response.status, errorBody, jobId },
+            "Sora API error polling job status. Retrying...",
+          );
           // For other server-side errors, we'll retry after a delay.
-          await new Promise((resolve) => setTimeout(resolve, this.pollIntervalMs));
+          await new Promise((resolve) =>
+            setTimeout(resolve, this.pollIntervalMs),
+          );
           continue;
         }
 
         const statusData = (await response.json()) as SoraJobStatusResponse;
-        logger.debug({ jobId, status: statusData.status, response: statusData }, "Sora job status update."); // Log full response for debug
+        logger.debug(
+          { jobId, status: statusData.status, response: statusData },
+          "Sora job status update.",
+        ); // Log full response for debug
 
         const currentStatus = statusData.status.toLowerCase();
 
         if (currentStatus === "succeeded") {
-          logger.info({ jobId, response: statusData }, "Sora job succeeded according to API.");
+          logger.info(
+            { jobId, response: statusData },
+            "Sora job succeeded according to API.",
+          );
           const firstGeneration = statusData.generations?.[0];
           if (firstGeneration?.url) {
             // Successfully found URL
             return statusData;
           } else {
             // Succeeded, but no URL found where expected
-            logger.error({ jobId, response: statusData }, "Sora job status is 'succeeded' but no video URL found in generations[0].url.");
+            logger.error(
+              { jobId, response: statusData },
+              "Sora job status is 'succeeded' but no video URL found in generations[0].url.",
+            );
             // This is a terminal error for this attempt, should not be caught by the polling retry catch block.
-            throw new Error("Sora job succeeded but video data is missing or in an unexpected format.");
+            throw new Error(
+              "Sora job succeeded but video data is missing or in an unexpected format.",
+            );
           }
         } else if (currentStatus === "failed" || currentStatus === "canceled") {
-          logger.error({ jobId, status: statusData.status, error: statusData.error, response: statusData }, "Sora job failed or was canceled by API.");
+          logger.error(
+            {
+              jobId,
+              status: statusData.status,
+              error: statusData.error,
+              response: statusData,
+            },
+            "Sora job failed or was canceled by API.",
+          );
           // This is a terminal error, should not be caught by the polling retry catch block.
           throw new Error(
             `Sora job ${jobId} ${statusData.status}: ${statusData.error?.message || "Unknown error details not provided by API."}`,
@@ -226,17 +291,12 @@ export class SoraAPI {
         }
         // If status is "running", "preprocessing", "queued", etc., continue polling.
         // No action needed here, the loop will continue.
-
       } catch (error: any) {
-        // This catch block is intended for network errors or unexpected issues with fetch/JSON parsing,
-        // NOT for terminal job states like "failed" or "succeeded but no URL".
-        // If the error thrown above (e.g. "video data missing") is caught here, it's a problem.
-        // We need to ensure terminal errors propagate out.
-        if (error.message.startsWith("Sora job succeeded but video data is missing") ||
-            error.message.startsWith(`Sora job ${jobId} ${statusData.status.toLowerCase()}`)) { // A bit fragile to check message
-             throw error; // Re-throw terminal errors
-        }
-        logger.warn({ error: error.message, jobId, stack: error.stack }, "Network or unexpected error during polling, retrying...");
+        // Only handle fetch/network/unexpected errors here
+        logger.warn(
+          { error: error.message, jobId, stack: error.stack },
+          "Network or unexpected error during polling, retrying...",
+        );
       }
       await new Promise((resolve) => setTimeout(resolve, this.pollIntervalMs));
     }
@@ -247,7 +307,10 @@ export class SoraAPI {
     durationSeconds: number,
     orientation: OrientationEnum = OrientationEnum.portrait,
   ): Promise<Video> {
-    logger.info({ prompt, durationSeconds, orientation }, "Requesting video from Sora.");
+    logger.info(
+      { prompt, durationSeconds, orientation },
+      "Requesting video from Sora.",
+    );
     const { width, height } = getOrientationConfig(orientation);
 
     const jobId = await this.initiateVideoGeneration(
@@ -262,52 +325,23 @@ export class SoraAPI {
     // completedJob here is guaranteed to be a "succeeded" status with a generations[0].url if no error was thrown
     const videoUrl = completedJob.generations![0].url!; // Safe due to checks in pollForJobCompletion
 
-    logger.info({ jobId, videoUrl }, "Sora video generated successfully and URL retrieved.");
+    logger.info(
+      { jobId, videoUrl },
+      "Sora video generated successfully and URL retrieved.",
+    );
     // Sora API doesn't give a persistent ID for the video itself, use the job ID or a new cuid
-      // For now, let's use a new cuid as the video ID for consistency with how Pexels was handled (though Pexels IDs were from the service)
-      // The 'id' here is more like a temporary identifier for the downloaded clip in our system if needed.
-      // The URL is the most important part.
-      return {
-        id: `sora-${jobId}`, // Or use cuid() if a unique ID for this specific instance is needed
-        url: videoUrl,
-        width, // Assuming the generated video matches requested dimensions
-        height,
-      };
+    // For now, let's use a new cuid as the video ID for consistency with how Pexels was handled (though Pexels IDs were from the service)
+    // The 'id' here is more like a temporary identifier for the downloaded clip in our system if needed.
+    // The URL is the most important part.
+    return {
+      id: `sora-${jobId}`, // Or use cuid() if a unique ID for this specific instance is needed
+      url: videoUrl,
+      width, // Assuming the generated video matches requested dimensions
+      height,
+    };
     // The 'else' block here is no longer needed because pollForJobCompletion
     // will throw an error if the job does not succeed with a URL.
     // If pollForJobCompletion returns, 'completedJob' is guaranteed to be successful
     // and contain the necessary URL.
-    }
   }
 }
-
-// Example usage (for testing purposes, would not be here in final code)
-/*
-async function testSora() {
-  const apiKey = process.env.SORA_API_KEY;
-  const apiEndpoint = process.env.SORA_API_ENDPOINT;
-
-  if (!apiKey || !apiEndpoint) {
-    logger.error("SORA_API_KEY and SORA_API_ENDPOINT environment variables must be set for testing.");
-    return;
-  }
-
-  const sora = new SoraAPI(apiKey, apiEndpoint);
-
-  try {
-    const prompt = "A serene beach at sunset, with gentle waves.";
-    const duration = 7; // seconds
-    const orientation = OrientationEnum.landscape;
-
-    logger.info(`Attempting to generate video with prompt: "${prompt}"`);
-    const video = await sora.generateVideo(prompt, duration, orientation);
-    logger.info({ video }, "Successfully generated video from Sora:");
-  } catch (error) {
-    logger.error({ error }, "Error testing Sora API:");
-  }
-}
-
-// To run test:
-// SORA_API_KEY="your_key" SORA_API_ENDPOINT="your_endpoint" node -e "require('./Sora.ts').testSora()"
-// Make sure to compile TS to JS first or use ts-node.
-*/

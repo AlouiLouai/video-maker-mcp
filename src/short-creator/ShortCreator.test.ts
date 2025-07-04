@@ -8,7 +8,7 @@ import { Kokoro } from "./libraries/Kokoro";
 import { Remotion } from "./libraries/Remotion";
 import { Whisper } from "./libraries/Whisper";
 import { FFMpeg } from "./libraries/FFmpeg";
-import { PexelsAPI } from "./libraries/Pexels";
+import { SoraAPI } from "./libraries/Sora";
 import { Config } from "../config";
 import { MusicManager } from "./music";
 
@@ -100,6 +100,48 @@ vi.mock("kokoro-js", () => {
   };
 });
 
+// Mock https module for video download
+vi.mock("https", () => {
+  const originalHttps = vi.importActual("https") as any; 
+  const EventEmitter = require("events");
+
+  return {
+    ...originalHttps, 
+    get: vi.fn((url: string, callback?: (res: any) => void) => {
+      const responseEmitter = new EventEmitter() as any; 
+      responseEmitter.statusCode = 200;
+      responseEmitter.pipe = vi.fn((destinationStream: any) => {
+        // The fs.createWriteStream mock has an 'on' method.
+        // We need to find the 'finish' handler and call it.
+        if (destinationStream.on && typeof destinationStream.on === 'function') {
+            const onCall = destinationStream.on.mock?.calls.find((call: any) => call[0] === 'finish');
+            if (onCall && typeof onCall[1] === 'function') {
+                onCall[1](); // Call the 'finish' handler
+            } else {
+                // If the specific mock structure is different, this might need adjustment
+                // For now, assume 'finish' can be emitted if 'on' was used to register it.
+                // Or, if the stream is an EventEmitter itself:
+                // destinationStream.emit('finish');
+            }
+        }
+        return destinationStream; 
+      });
+
+      if (callback) {
+        callback(responseEmitter);
+      }
+
+      const requestEmitter = new EventEmitter();
+      // requestEmitter.on = vi.fn().mockReturnThis(); // Use actual EventEmitter .on
+      
+      // Example: to simulate an error for testing this path:
+      // setTimeout(() => requestEmitter.emit('error', new Error("Mock https.get error")), 0);
+      
+      return requestEmitter; 
+    }),
+  };
+});
+
 // mock remotion
 vi.mock("@remotion/bundler", () => {
   return {
@@ -149,12 +191,12 @@ test("test me", async () => {
   vi.spyOn(ffmpeg, "saveNormalizedAudio").mockResolvedValue("mocked-path.wav");
   vi.spyOn(ffmpeg, "saveToMp3").mockResolvedValue("mocked-path.mp3");
 
-  const pexelsAPI = new PexelsAPI("mock-api-key");
-  vi.spyOn(pexelsAPI, "findVideo").mockResolvedValue({
-    id: "mock-video-id-1",
-    url: "https://example.com/mock-video-1.mp4",
-    width: 1080,
-    height: 1920,
+  const soraAPI = new SoraAPI("mock-sora-key", "https://mock.sora.endpoint/api");
+  vi.spyOn(soraAPI, "generateVideo").mockResolvedValue({
+    id: "sora-job-mock-video-id-1", // Or any mock ID
+    url: "https://mock.sora.video/video.mp4", // Mock video URL
+    width: 1080, // Or based on orientation
+    height: 1920, // Or based on orientation
   });
 
   const config = new Config();
@@ -185,7 +227,7 @@ test("test me", async () => {
     kokoro,
     whisper,
     ffmpeg,
-    pexelsAPI,
+    soraAPI,
     musicManager,
   );
 
