@@ -261,16 +261,14 @@ export class SoraAPI {
           );
           const firstGeneration = statusData.generations?.[0];
           if (firstGeneration?.url) {
-            // Successfully found URL
-            return statusData;
+            return statusData; // Successfully found URL, exit polling loop
           } else {
-            // Succeeded, but no URL found where expected
+            // Succeeded, but no URL found where expected. This is a terminal error for the job.
             logger.error(
               { jobId, response: statusData },
-              "Sora job status is 'succeeded' but no video URL found in generations[0].url.",
+              "Sora job status is 'succeeded' but no video URL found in generations[0].url. This is a terminal condition for this job.",
             );
-            // This is a terminal error for this attempt, should not be caught by the polling retry catch block.
-            throw new Error(
+            throw new Error( // This error should propagate up and not be retried by this polling loop
               "Sora job succeeded but video data is missing or in an unexpected format.",
             );
           }
@@ -282,22 +280,34 @@ export class SoraAPI {
               error: statusData.error,
               response: statusData,
             },
-            "Sora job failed or was canceled by API.",
+            `Sora job ${currentStatus} by API. This is a terminal condition for this job.`,
           );
-          // This is a terminal error, should not be caught by the polling retry catch block.
-          throw new Error(
+          throw new Error( // This error should propagate up and not be retried by this polling loop
             `Sora job ${jobId} ${statusData.status}: ${statusData.error?.message || "Unknown error details not provided by API."}`,
           );
         }
         // If status is "running", "preprocessing", "queued", etc., continue polling.
-        // No action needed here, the loop will continue.
+        // No action needed here for these statuses, the loop will pause and retry.
+
       } catch (error: any) {
-        // Only handle fetch/network/unexpected errors here
+        // This catch block is intended for retrying network errors or unexpected issues during the fetch/status check.
+        // Errors thrown due to terminal job states (succeeded without URL, failed, canceled) should not be caught here to be retried.
+        // However, if those specific errors are thrown from within this try block, they WILL be caught here.
+        // The logic above now ensures that such terminal errors are thrown directly and will propagate out of pollForJobCompletion.
+        // Let's refine this catch to be more specific or re-throw if it's one of our specific terminal errors.
+
+        if (error.message === "Sora job succeeded but video data is missing or in an unexpected format." ||
+            (error.message && error.message.startsWith(`Sora job ${jobId}`))) { // Check if it's one of the terminal errors we throw
+          throw error; // Re-throw the specific terminal error to prevent retry by this loop
+        }
+
+        // For other errors (network, unexpected during fetch/JSON parsing), log and retry.
         logger.warn(
           { error: error.message, jobId, stack: error.stack },
           "Network or unexpected error during polling, retrying...",
         );
       }
+      // Pause before the next poll attempt, only if the loop hasn't exited or thrown a terminal error.
       await new Promise((resolve) => setTimeout(resolve, this.pollIntervalMs));
     }
   }
